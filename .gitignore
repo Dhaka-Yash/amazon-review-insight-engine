@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pyc
+data/embeddings.npy
+data/clustered_reviews.csv
+data/clean_reviews.csv
