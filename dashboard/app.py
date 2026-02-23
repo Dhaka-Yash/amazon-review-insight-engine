@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import sys
+import os
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
 
@@ -10,13 +11,29 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from src.vector_search import VectorSearch
-from src.config import EMBEDDING_MODEL, CLUSTERED_DATA_PATH, EMBEDDINGS_PATH
+from src.config import EMBEDDING_MODEL
 
 st.set_page_config(layout="wide")
 st.title("🧠 Amazon Review Insight Engine")
 
-clustered_path = ROOT_DIR / CLUSTERED_DATA_PATH
-embeddings_path = ROOT_DIR / EMBEDDINGS_PATH
+default_artifacts_dir = ROOT_DIR / "data"
+artifacts_dir = Path(os.getenv("REVIEW_ARTIFACTS_DIR", str(default_artifacts_dir))).expanduser()
+clustered_path = artifacts_dir / "clustered_reviews.csv"
+embeddings_path = artifacts_dir / "embeddings.npy"
+
+if not clustered_path.exists() or not embeddings_path.exists():
+    st.error("Missing pipeline artifacts. Generate files first, then rerun Streamlit.")
+    st.code(
+        "\n".join(
+            [
+                f"Expected: {clustered_path}",
+                f"Expected: {embeddings_path}",
+                "Run pipeline: python main.py --artifacts-dir <folder>",
+                "Set env var: $env:REVIEW_ARTIFACTS_DIR='<folder>'",
+            ]
+        )
+    )
+    st.stop()
 
 df = pd.read_csv(clustered_path)
 embeddings = np.load(embeddings_path)

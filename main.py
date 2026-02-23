@@ -1,3 +1,7 @@
+import os
+from argparse import ArgumentParser
+from pathlib import Path
+
 from src.config import *
 from src.data_processing import load_and_clean_data
 from src.embeddings import EmbeddingPipeline
@@ -8,29 +12,41 @@ from src.clusterings import (
 )
 from src.trend_analysis import compute_trends
 from src.insight_engine import cluster_impact
-import os
 
 
-def run():
+def resolve_artifact_paths(artifacts_dir: str | None):
+    if artifacts_dir:
+        output_dir = Path(artifacts_dir).expanduser().resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        clean_path = output_dir / "clean_reviews.csv"
+        embeddings_path = output_dir / "embeddings.npy"
+        clustered_path = output_dir / "clustered_reviews.csv"
+        return clean_path, embeddings_path, clustered_path
+
+    return Path(CLEAN_DATA_PATH), Path(EMBEDDINGS_PATH), Path(CLUSTERED_DATA_PATH)
+
+
+def run(data_path: str = DATA_PATH, artifacts_dir: str | None = None):
+    clean_path, embeddings_path, clustered_path = resolve_artifact_paths(artifacts_dir)
 
     # Step 1: Load + Clean
-    df = load_and_clean_data(DATA_PATH)
-    df.to_csv(CLEAN_DATA_PATH, index=False)
+    df = load_and_clean_data(data_path)
+    df.to_csv(clean_path, index=False)
 
     # Step 2: Embeddings
     embedder = EmbeddingPipeline()
-    if os.path.exists(EMBEDDINGS_PATH):
-        cached_embeddings = embedder.load(EMBEDDINGS_PATH)
+    if os.path.exists(embeddings_path):
+        cached_embeddings = embedder.load(embeddings_path)
         if cached_embeddings.shape[0] == len(df):
             print("Using cached embeddings.")
             embeddings = cached_embeddings
         else:
             print("Cached embeddings shape mismatch. Regenerating...")
             embeddings = embedder.generate(df["full_text"].tolist())
-            embedder.save(embeddings, EMBEDDINGS_PATH)
+            embedder.save(embeddings, embeddings_path)
     else:
         embeddings = embedder.generate(df["full_text"].tolist())
-        embedder.save(embeddings, EMBEDDINGS_PATH)
+        embedder.save(embeddings, embeddings_path)
 
     # Step 3: Clustering
     reduced = reduce_dimensions(embeddings)
@@ -41,7 +57,7 @@ def run():
     print("Silhouette Score:", score)
 
     # Step 4: Save clustered data
-    df.to_csv(CLUSTERED_DATA_PATH, index=False)
+    df.to_csv(clustered_path, index=False)
 
     # Step 5: Business insights
     print("\nCluster Impact (Mean Rating):")
@@ -52,8 +68,25 @@ def run():
     print("\nTrend Snapshot:")
     print(trend.tail())
 
+    print("\nSaved files:")
+    print(f"- {clean_path.resolve()}")
+    print(f"- {embeddings_path.resolve()}")
+    print(f"- {clustered_path.resolve()}")
+    print("\nTo run Streamlit with external artifacts, set REVIEW_ARTIFACTS_DIR to this folder.")
+
     print("\nPipeline Completed Successfully.")
 
 
 if __name__ == "__main__":
-    run()
+    parser = ArgumentParser()
+    parser.add_argument("--data-path", default=DATA_PATH, help="Path to input Reviews.csv")
+    parser.add_argument(
+        "--artifacts-dir",
+        default=None,
+        help=(
+            "Directory where clean_reviews.csv, embeddings.npy, and "
+            "clustered_reviews.csv are saved."
+        ),
+    )
+    args = parser.parse_args()
+    run(data_path=args.data_path, artifacts_dir=args.artifacts_dir)
